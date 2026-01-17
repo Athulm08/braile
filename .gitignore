@@ -1,0 +1,29 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+
+# --- Project Specific (Temporary Files) ---
+# Ignore the temporary images created by our code
+temp.jpg
+temp_process.jpg
+data/input/
+data/output/
+
+# --- AI Models ---
+# Transformers models are huge; don't upload them
+models/
+.cache/
+
+# --- IDEs ---
+.vscode/
+.idea/
+
+# --- OS Specific ---
+Thumbs.db
+.DS_Storegit status

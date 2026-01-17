@@ -1,0 +1,8 @@
+opencv-python-headless
+gradio
+transformers
+torch
+accelerate
+numpy
+pillow
+scikit-learn
