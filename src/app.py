@@ -5,20 +5,17 @@ import numpy as np
 import gradio as gr
 from PIL import Image
 
-# Your existing imports
+# Import the modules we just created
 from preprocess import clean_image
 from detector import detect_dots, group_dots_into_lines
 from translator import BrailleTranslator
 from ai_refiner import AIRefiner
 
-# --- NEW: FOLDER SETUP ---
-# This code ensures the folders exist as soon as you start the app
+# Folder Setup
 DATA_INPUT_DIR = "data/input"
 DATA_OUTPUT_DIR = "data/output"
-
 for folder in [DATA_INPUT_DIR, DATA_OUTPUT_DIR]:
-    if not os.path.exists(folder):
-        os.makedirs(folder)
+    os.makedirs(folder, exist_ok=True)
 
 translator = BrailleTranslator()
 refiner = AIRefiner()
@@ -26,15 +23,11 @@ refiner = AIRefiner()
 def process_workflow(image, mode):
     if image is None: return "", "", None
     
-    # Generate a unique filename based on current time
     timestamp = int(time.time())
     input_path = os.path.join(DATA_INPUT_DIR, f"scan_{timestamp}.jpg")
     output_path = os.path.join(DATA_OUTPUT_DIR, f"result_{timestamp}.jpg")
 
-    # 1. Save the Raw Input to data/input/
     image.save(input_path)
-    
-    # 2. Convert to OpenCV for processing
     img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
     debug_img = img_cv.copy()
     
@@ -50,30 +43,51 @@ def process_workflow(image, mode):
     final_text = ""
     for line in lines:
         line.sort(key=lambda k: k[0])
-        gap_limit = avg_dot_w * 4.0 
+        gap_limit = avg_dot_w * 3.5 # Optimized gap threshold
         
-        cluster, last_x = [], line[0][0]
+        cluster = []
+        last_x = line[0][0]
         for dot in line:
+            # If gap is too large, process the current character and reset
             if (dot[0] - last_x) > gap_limit:
                 char, rect = translator.decode_cell(cluster, avg_dot_w)
                 final_text += char
                 cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
                 cluster = []
+            
             cluster.append(dot)
             last_x = dot[0]
         
+        # Process the final character of the line
         if cluster:
             char, rect = translator.decode_cell(cluster, avg_dot_w)
             final_text += char
             cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
         final_text += "\n"
 
-    # 3. Save the Processed Visualization to data/output/
     cv2.imwrite(output_path, debug_img)
-
     raw_output = final_text.strip()
     ai_output = refiner.fix_text(raw_output)
     
     return raw_output, ai_output, cv2.cvtColor(debug_img, cv2.COLOR_BGR2RGB)
 
-# ... (rest of your Gradio UI code remains the same)
+# Gradio Interface
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🧠 Intelligent Braille-to-Text Workflow")
+    gr.Markdown("This system saves every scan for your dataset and uses LLMs to refine the results.")
+    
+    with gr.Row():
+        with gr.Column():
+            input_img = gr.Image(type="pil", label="Upload Braille Script")
+            mode = gr.Radio(["Digital/Black Dots", "Real Photo (Embossed)"], 
+                            label="Scan Mode", value="Digital/Black Dots")
+            btn = gr.Button("Process Script", variant="primary")
+            
+        with gr.Column():
+            debug_out = gr.Image(label="AI Dot Segmentation")
+            raw_out = gr.Textbox(label="Raw Detection")
+            ai_out = gr.Textbox(label="AI Refined Text")
+
+    btn.click(process_workflow, inputs=[input_img, mode], outputs=[raw_out, ai_out, debug_out])
+
+demo.launch(share=True, debug=True)
