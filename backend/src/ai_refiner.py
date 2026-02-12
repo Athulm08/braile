@@ -1,13 +1,13 @@
-#braile/backend/src/ai_refiner.py
 from transformers import pipeline
 import torch
 import warnings
+from deep_translator import GoogleTranslator  # <--- New Import
 
 # Suppress unnecessary warnings from the transformers library
 warnings.filterwarnings("ignore")
 
 class AIRefiner:
-    def __init__(self):
+    def __init__(self): 
         # Determine if we can use a GPU
         self.device = 0 if torch.cuda.is_available() else -1
         
@@ -35,7 +35,6 @@ class AIRefiner:
         if not self.model:
             return text
 
-        # A more structured prompt helps the model understand its specific task
         prompt = (
             f"Task: Correct the spelling and formatting of this Braille-to-English translation. "
             f"If it's a single word, just provide the word. "
@@ -43,24 +42,32 @@ class AIRefiner:
         )
 
         try:
-            # Generate the correction
             result = self.model(
                 prompt, 
                 max_length=128, 
                 num_beams=4, 
                 early_stopping=True
             )
-            
             corrected = result[0]['generated_text']
-            
-            # Post-processing: Remove AI chatter and clean up
-            # (Sometimes T5 adds "The text is:" or quotes)
             clean_output = corrected.replace("The text is:", "").replace("Corrected text:", "").strip()
             clean_output = clean_output.strip('"').strip("'")
-            
-            # If the AI produces an empty result, return the original
             return clean_output if clean_output else text
-            
         except Exception as e:
             print(f"Error during AI refinement: {e}")
             return text
+
+    def translate_text(self, text, target_lang='hindi'):
+        """
+        Translates the refined English text into a target language.
+        Supported langs example: 'hindi', 'telugu', 'tamil', 'french', 'spanish', 'german'
+        """
+        if not text or target_lang.lower() == 'english':
+            return text
+            
+        try:
+            # GoogleTranslator handles the API calls to Google Translate
+            translated = GoogleTranslator(source='auto', target=target_lang).translate(text)
+            return translated
+        except Exception as e:
+            print(f"Translation error: {e}")
+            return f"Error: Could not translate to {target_lang}"

@@ -16,10 +16,10 @@ from ai_refiner import AIRefiner
 
 app = FastAPI()
 
-# --- CORS SETUP: Allows React (port 5173) to talk to Python (port 8000) ---
+# --- CORS SETUP ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173"], # Adjust if your React port is different
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,7 +35,11 @@ translator = BrailleTranslator()
 refiner = AIRefiner()
 
 @app.post("/translate")
-async def translate_endpoint(file: UploadFile = File(...), mode: str = Form(...)):
+async def translate_endpoint(
+    file: UploadFile = File(...), 
+    mode: str = Form(...),
+    target_lang: str = Form("english")  # <--- Added target_lang parameter
+):
     # 1. Load Image from Request
     contents = await file.read()
     nparr = np.frombuffer(contents, np.uint8)
@@ -52,7 +56,7 @@ async def translate_endpoint(file: UploadFile = File(...), mode: str = Form(...)
     dots = detect_dots(thresh)
     
     if not dots:
-        return {"raw": "No dots found", "ai": "No dots found", "image": None}
+        return {"raw": "No dots found", "ai": "No dots found", "translated": "No dots found", "image": None}
 
     lines = group_dots_into_lines(dots)
     avg_dot_w = sum(d[2] for d in dots) / len(dots)
@@ -79,9 +83,14 @@ async def translate_endpoint(file: UploadFile = File(...), mode: str = Form(...)
     # 4. Save processed result
     cv2.imwrite(os.path.join(DATA_OUTPUT_DIR, f"result_{timestamp}.jpg"), debug_img)
     
-    # 5. AI Refinement
+    # 5. AI Refinement & Translation
     raw_output = final_text.strip()
+    
+    # Step A: Fix English spelling/formatting
     ai_output = refiner.fix_text(raw_output)
+    
+    # Step B: Translate to target language (using the method we added to AIRefiner)
+    translated_output = refiner.translate_text(ai_output, target_lang=target_lang)
 
     # 6. Convert OpenCV image to Base64 String for React to display
     _, buffer = cv2.imencode('.jpg', debug_img)
@@ -89,7 +98,8 @@ async def translate_endpoint(file: UploadFile = File(...), mode: str = Form(...)
 
     return {
         "raw": raw_output,
-        "ai": ai_output,
+        "ai": ai_output,              # Clean English
+        "translated": translated_output, # Final Language (Hindi, Telugu, etc.)
         "image": f"data:image/jpeg;base64,{img_base64}"
     }
 
