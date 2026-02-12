@@ -34,3 +34,39 @@ Braille Image → Preprocessing → Dot Detection → Braille Decoding → Raw T
 ## Author
 Athul M  
 MCA – Braille Script to Normal Language Using AI & Deep Learning  
+
+
+
+structure of the code
+
+braile-main/
+│
+├── README.md
+│
+├── backend/
+│   │
+│   ├── requirements.txt
+│   │
+│   ├── data/
+│   │   └── (optional: sample images / test images)
+│   │
+│   └── src/
+│       │
+│       ├── main.py
+│       ├── preprocess.py
+│       ├── detector.py
+│       ├── translator.py
+│       └── ai_refiner.py
+│
+└── frontend/
+    │
+    ├── package.json
+    ├── vite.config.js
+    ├── index.html
+    │
+    └── src/
+        │
+        ├── main.jsx
+        ├── App.jsx
+        ├── App.css
+        └── index.css
