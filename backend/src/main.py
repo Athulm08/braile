@@ -56,7 +56,6 @@ async def translate_endpoint(
     lines = group_dots_into_lines(dots)
     
     # --- STRICT GRID ALIGNMENT ---
-    # Calculate horizontal (X) and vertical (Y) dot spacing separately
     avg_dot_w = np.median([d[2] for d in dots])
     dx_list, dy_list = [], []
     
@@ -64,20 +63,18 @@ async def translate_endpoint(
         xs = sorted([d[4] for d in line])
         for i in range(1, len(xs)):
             dx = xs[i] - xs[i-1]
-            if dx > avg_dot_w * 0.3: # Ignore dots in exact same column
+            if dx > avg_dot_w * 0.3: 
                 dx_list.append(dx)
                 
         ys = sorted([d[5] for d in line])
         for i in range(1, len(ys)):
             dy = ys[i] - ys[i-1]
-            if dy > avg_dot_w * 0.3: # Ignore dots in exact same row
+            if dy > avg_dot_w * 0.3: 
                 dy_list.append(dy)
 
-    # 25th percentile mathematically isolates the intra-cell distance perfectly
     raw_Sx = np.percentile(dx_list, 25) if dx_list else avg_dot_w * 2.5
     raw_Sy = np.percentile(dy_list, 25) if dy_list else avg_dot_w * 2.5
     
-    # Bound the values to physical Braille limits to prevent glitching on weird images
     S_x = max(min(raw_Sx, avg_dot_w * 3.5), avg_dot_w * 1.2)
     S_y = max(min(raw_Sy, avg_dot_w * 3.5), avg_dot_w * 1.2)
 
@@ -91,12 +88,7 @@ async def translate_endpoint(
         
         for dot in line[1:]:
             cx = dot[4]
-            prev_cx = cluster[-1][4]
             
-            # THE STRICT WIDTH RULE:
-            # A Braille cell has 2 columns. The distance from col 1 to col 2 is S_x.
-            # If a dot is more than 1.4 * S_x away from the FIRST dot of this cell, 
-            # it is physically impossible for it to belong to this cell. Split it!
             if (cx - cell_min_cx) > S_x * 1.4:
                 
                 # Decode completed character
@@ -104,8 +96,11 @@ async def translate_endpoint(
                 final_text += char
                 cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
                 
-                # Check for Space (Distance from end of last char to start of new char)
-                if (cx - prev_cx) > S_x * 2.5:
+                # --- INTELLIGENT SPACE DETECTION ---
+                # We measure from the START of the old cell (cell_min_cx) to the START of the new cell (cx)
+                # Adjacent characters start ~2.5x to 3.0x S_x apart.
+                # A true space adds an empty cell, jumping the distance to > 4.5x S_x.
+                if (cx - cell_min_cx) > S_x * 3.8:
                     final_text += " "
                     
                 # Start new cell
