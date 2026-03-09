@@ -1,0 +1,1345 @@
+
+============================================================
+FILE PATH: code_extract.py
+============================================================
+
+import os
+
+# 1. Configuration
+# Changed to '.' to scan the entire current folder (includes backend and frontend)
+SOURCE_DIR = '.' 
+OUTPUT_FILE = 'extracted_project_code.txt'
+
+# Folders we DO NOT want to extract (Frontend & Backend massive folders)
+IGNORE_DIRS = {
+    'node_modules', 
+    '.git', 
+    'build', 
+    'dist', 
+    '.next',
+    'venv',         # Ignored if backend uses Python virtual env
+    'env',          # Ignored if backend uses Python virtual env
+    '__pycache__'   # Ignored if backend uses Python
+}
+
+# Only extract files with these extensions
+ALLOWED_EXTENSIONS = {
+    '.js', '.jsx', '.cjs', '.mjs',
+    '.ts', '.tsx', 
+    '.css', '.scss', 
+    '.html', 
+    '.json',
+    '.py',          # Added in case backend is Python
+    '.md'           # Added to grab README.md
+}
+
+# Specific files to ignore (like large lock files)
+IGNORE_FILES = {
+    'package-lock.json', 
+    'yarn.lock',
+    'extract.py'    # Let's ignore this script itself so it doesn't print
+}
+
+def extract_code():
+    print(f"Starting extraction from '{os.path.abspath(SOURCE_DIR)}'...")
+    
+    with open(OUTPUT_FILE, 'w', encoding='utf-8') as outfile:
+        # os.walk goes through the folder structure
+        for root, dirs, files in os.walk(SOURCE_DIR):
+            
+            # Remove ignored directories from the search list IN-PLACE.
+            dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+            
+            for file in files:
+                if file in IGNORE_FILES:
+                    continue
+                
+                # Check file extension
+                _, ext = os.path.splitext(file)
+                if ext.lower() in ALLOWED_EXTENSIONS:
+                    filepath = os.path.join(root, file)
+                    
+                    # Create a clean relative path (e.g., "backend\src\server.js")
+                    rel_path = os.path.relpath(filepath, start='.')
+                    
+                    # Write the folder structure/file path as a header
+                    outfile.write(f"\n{'='*60}\n")
+                    outfile.write(f"FILE PATH: {rel_path}\n")
+                    outfile.write(f"{'='*60}\n\n")
+                    
+                    # Read the file content and write it to the txt file
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as infile:
+                            content = infile.read()
+                            outfile.write(content)
+                            outfile.write("\n\n")
+                    except Exception as e:
+                        outfile.write(f"// ERROR READING FILE: {e}\n\n")
+
+    print(f"Extraction complete! Code has been saved to '{OUTPUT_FILE}'.")
+
+if __name__ == "__main__":
+    extract_code()
+
+
+
+============================================================
+FILE PATH: package.json
+============================================================
+
+{
+  "name": "braile",
+  "version": "1.0.0",
+  "description": "This project converts Braille script images into normal readable text using Computer Vision and Deep Learning techniques.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Athulm08/braile.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Athulm08/braile/issues"
+  },
+  "homepage": "https://github.com/Athulm08/braile#readme"
+}
+
+
+
+============================================================
+FILE PATH: README.md
+============================================================
+
+# Braille Script to Normal Language Using AI & Deep Learning
+
+This project converts Braille script images into normal readable text using Computer Vision and Deep Learning techniques.
+
+## Features
+- Braille image preprocessing using OpenCV
+- Dot detection and Braille cell grouping
+- Rule-based Braille character translation
+- AI-based text refinement using T5 Transformer model
+- FastAPI backend
+- React + Tailwind frontend
+
+## Model Used
+- **T5-small Transformer model** (HuggingFace)
+- Used for correcting spelling and improving grammar
+
+## Dataset
+- No custom dataset used for Braille recognition
+- Braille decoding is done using standard Braille encoding rules
+- AI model is pre-trained on the **C4 (Colossal Clean Crawled Corpus)** dataset
+
+## Technology Stack
+- Python, OpenCV, NumPy
+- PyTorch, HuggingFace Transformers
+- FastAPI
+- React, Tailwind CSS
+
+## Workflow
+
+Braille Image → Preprocessing → Dot Detection → Braille Decoding → Raw Text → AI Refinement → Final Text
+
+
+
+## Author
+Athul M  
+MCA – Braille Script to Normal Language Using AI & Deep Learning  
+
+
+
+structure of the code
+
+braile-main/
+│
+├── README.md
+│
+├── backend/
+│   │
+│   ├── requirements.txt
+│   │
+│   ├── data/
+│   │   └── (optional: sample images / test images)
+│   │
+│   └── src/
+│       │
+│       ├── main.py
+│       ├── preprocess.py
+│       ├── detector.py
+│       ├── translator.py
+│       └── ai_refiner.py
+│
+└── frontend/
+    │
+    ├── package.json
+    ├── vite.config.js
+    ├── index.html
+    │
+    └── src/
+        │
+        ├── main.jsx
+        ├── App.jsx
+        ├── App.css
+        └── index.css
+
+
+
+============================================================
+FILE PATH: backend\src\ai_refiner.py
+============================================================
+
+from transformers import pipeline
+import torch
+import warnings
+from googletrans import Translator  # <--- Changed to googletrans
+
+# Suppress unnecessary warnings
+warnings.filterwarnings("ignore")
+
+class AIRefiner:
+    def __init__(self): 
+        # Detect if GPU is available
+        self.device = 0 if torch.cuda.is_available() else -1
+        print(f"[*] Initializing AI Refiner on {'GPU' if self.device == 0 else 'CPU'}...")
+        
+        try:
+            # Load Flan-T5 for English text correction
+            self.model = pipeline(
+                "text2text-generation", 
+                model="google/flan-t5-base", 
+                device=self.device
+            )
+            self.translator_engine = Translator() # Initialize googletrans
+            print("[+] AI Model and Translator loaded successfully.")
+        except Exception as e:
+            print(f"[-] Initialization failed: {e}")
+            self.model = None
+
+    def fix_text(self, text):
+        """Clean English Braille-to-Text artifacts using Flan-T5."""
+        if not text or len(text.strip()) < 2:
+            return text
+        if not self.model:
+            return text
+
+        prompt = f"Correct spelling and grammar: {text}"
+
+        try:
+            result = self.model(prompt, max_length=128, num_beams=4, early_stopping=True)
+            corrected = result[0]['generated_text']
+            
+            # Clean up T5 specific prefixes
+            clean_output = corrected.replace("The text is:", "").replace("Corrected text:", "").strip()
+            return clean_output if clean_output else text
+        except Exception as e:
+            print(f"Error during AI refinement: {e}")
+            return text
+
+    def translate_text(self, text, target_lang='hindi'):
+        """
+        Translates Refined English to target language using googletrans.
+        """
+        lang_input = target_lang.lower().strip()
+        
+        if not text or lang_input == 'english':
+            return text
+
+        # Mapping for googletrans
+        lang_map = {
+            "hindi": "hi",
+            "tamil": "ta",
+            "telugu": "te",
+            "malayalam": "ml",
+            "marathi": "mr",
+            "bengali": "bn",
+            "kannada": "kn",
+            "gujarati": "gu",
+            "punjabi": "pa",
+            "french": "fr",
+            "spanish": "es",
+            "german": "de",
+            "arabic": "ar"
+        }
+
+        lang_code = lang_map.get(lang_input, lang_input)
+
+        try:
+            # Usage: translator.translate(text, dest='lang_code')
+            # googletrans handles the 'en' source detection automatically
+            translated = self.translator_engine.translate(text, dest=lang_code)
+            return translated.text
+        except Exception as e:
+            print(f"Googletrans error for {target_lang}: {e}")
+            return text
+
+
+============================================================
+FILE PATH: backend\src\app.py
+============================================================
+
+# braile/backend/src/app.py
+
+import os
+import time
+import cv2
+import numpy as np
+import gradio as gr
+from PIL import Image
+
+# Import the modules we just created
+from preprocess import clean_image
+from detector import detect_dots, group_dots_into_lines
+from translator import BrailleTranslator
+from ai_refiner import AIRefiner
+
+# Folder Setup
+DATA_INPUT_DIR = "data/input"
+DATA_OUTPUT_DIR = "data/output"
+for folder in [DATA_INPUT_DIR, DATA_OUTPUT_DIR]:
+    os.makedirs(folder, exist_ok=True)
+
+translator = BrailleTranslator()
+refiner = AIRefiner()
+
+def process_workflow(image, mode):
+    if image is None: return "", "", None
+    
+    timestamp = int(time.time())
+    input_path = os.path.join(DATA_INPUT_DIR, f"scan_{timestamp}.jpg")
+    output_path = os.path.join(DATA_OUTPUT_DIR, f"result_{timestamp}.jpg")
+
+    image.save(input_path)
+    img_cv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    debug_img = img_cv.copy()
+    
+    is_photo = (mode == "Real Photo (Embossed)")
+    thresh = clean_image(img_cv, is_photo)
+    
+    dots = detect_dots(thresh)
+    if not dots: return "No dots found", "", None
+    
+    lines = group_dots_into_lines(dots)
+    avg_dot_w = sum(d[2] for d in dots) / len(dots)
+    avg_dot_h = sum(d[3] for d in dots) / len(dots)
+    
+    final_text = ""
+    for line in lines:
+        line.sort(key=lambda k: k[0])
+        
+        # Calculate line vertical metrics
+        line_ys = [d[1] for d in line]
+        line_min_y = min(line_ys)
+        line_max_y = max(line_ys)
+        line_h = line_max_y - line_min_y
+        
+        if line_h > 2.2 * avg_dot_h:
+            line_spacing = line_h / 2.0
+        elif line_h > 1.2 * avg_dot_h:
+            line_spacing = line_h
+        else:
+            line_spacing = 1.6 * avg_dot_h
+
+        gap_limit = avg_dot_w * 2.2 
+        space_limit = avg_dot_w * 5.0
+        
+        cluster = []
+        last_x = line[0][0]
+        
+        for dot in line:
+            # If gap is too large, process the current character and reset
+            if (dot[0] - last_x) > gap_limit:
+                char, rect = translator.decode_cell(cluster, avg_dot_w, line_min_y, line_spacing)
+                final_text += char
+                cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
+                cluster = []
+                
+                # Check for space between words
+                if (dot[0] - last_x) > space_limit:
+                    final_text += " "
+            
+            cluster.append(dot)
+            last_x = dot[0]
+        
+        # Process the final character of the line
+        if cluster:
+            char, rect = translator.decode_cell(cluster, avg_dot_w, line_min_y, line_spacing)
+            final_text += char
+            cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
+        final_text += "\n"
+
+    cv2.imwrite(output_path, debug_img)
+    raw_output = final_text.strip()
+    ai_output = refiner.fix_text(raw_output)
+    
+    return raw_output, ai_output, cv2.cvtColor(debug_img, cv2.COLOR_BGR2RGB)
+
+# Gradio Interface
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    gr.Markdown("# 🧠 Intelligent Braille-to-Text Workflow")
+    gr.Markdown("This system saves every scan for your dataset and uses LLMs to refine the results.")
+    
+    with gr.Row():
+        with gr.Column():
+            input_img = gr.Image(type="pil", label="Upload Braille Script")
+            mode = gr.Radio(["Digital/Black Dots", "Real Photo (Embossed)"], 
+                            label="Scan Mode", value="Digital/Black Dots")
+            btn = gr.Button("Process Script", variant="primary")
+            
+        with gr.Column():
+            debug_out = gr.Image(label="AI Dot Segmentation")
+            raw_out = gr.Textbox(label="Raw Detection")
+            ai_out = gr.Textbox(label="AI Refined Text")
+
+    btn.click(process_workflow, inputs=[input_img, mode], outputs=[raw_out, ai_out, debug_out])
+
+if __name__ == "__main__":
+    demo.launch(share=True, debug=True)
+
+
+============================================================
+FILE PATH: backend\src\detector.py
+============================================================
+
+# braile/backend/src/detector.py
+
+import cv2
+import numpy as np
+
+def detect_dots(thresh_img):
+    contours, _ = cv2.findContours(
+        thresh_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    dots = []
+    if contours:
+        areas = [cv2.contourArea(c) for c in contours]
+        median_area = np.median(areas) if areas else 0
+        for c in contours:
+            area = cv2.contourArea(c)
+            # Filter noise
+            if area > 3 and (0.15 * median_area < area < 5.0 * median_area):
+                x, y, w, h = cv2.boundingRect(c)
+                # Calculate True Centers for mathematical grid alignment
+                cx = x + (w / 2.0)
+                cy = y + (h / 2.0)
+                # Return tuple with centers included
+                dots.append((x, y, w, h, cx, cy)) 
+    return dots
+
+def group_dots_into_lines(dots):
+    if not dots:
+        return []
+
+    # Sort strictly by center Y (cy)
+    dots.sort(key=lambda k: k[5])
+
+    lines = []
+    curr_line = [dots[0]]
+    
+    # Use median height to avoid outlier distortion
+    avg_h = np.median([d[3] for d in dots])
+
+    for i in range(1, len(dots)):
+        # If the vertical center difference is small, it's the same line
+        if abs(dots[i][5] - curr_line[-1][5]) < (avg_h * 1.5):
+            curr_line.append(dots[i])
+        else:
+            lines.append(curr_line)
+            curr_line = [dots[i]]
+
+    lines.append(curr_line)
+    return lines
+
+
+============================================================
+FILE PATH: backend\src\main.py
+============================================================
+
+# braile/backend/src/main.py
+
+import os
+import time
+import uvicorn
+import cv2
+import numpy as np
+import base64
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.middleware.cors import CORSMiddleware
+
+from preprocess import clean_image
+from detector import detect_dots, group_dots_into_lines
+from translator import BrailleTranslator
+from ai_refiner import AIRefiner
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DATA_INPUT_DIR = "data/input"
+DATA_OUTPUT_DIR = "data/output"
+for folder in [DATA_INPUT_DIR, DATA_OUTPUT_DIR]:
+    os.makedirs(folder, exist_ok=True)
+
+translator = BrailleTranslator()
+refiner = AIRefiner()
+
+@app.post("/translate")
+async def translate_endpoint(
+    file: UploadFile = File(...), 
+    mode: str = Form(...),
+    target_lang: str = Form("english")
+):
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img_cv is None: return {"error": "Invalid Image"}
+    
+    debug_img = img_cv.copy()
+    timestamp = int(time.time())
+    
+    is_photo = (mode == "Real Photo (Embossed)")
+    thresh = clean_image(img_cv, is_photo)
+    dots = detect_dots(thresh)
+    
+    if not dots:
+        return {"raw": "No dots found", "ai": "No dots found", "translated": "No dots found", "image": None}
+
+    lines = group_dots_into_lines(dots)
+    
+    # --- INTELLIGENT SPACING CALCULATION ---
+    # Find base dot width
+    avg_dot_w = np.median([d[2] for d in dots])
+    
+    # Calculate 'S' (Global Spatial Distance between dots)
+    # We find all horizontal distances between nearest neighbors
+    horizontal_dists = []
+    for line in lines:
+        line.sort(key=lambda d: d[4]) # Sort by center X
+        for i in range(len(line)-1):
+            dist = line[i+1][4] - line[i][4]
+            if dist > avg_dot_w * 0.5: # Ignore dots directly below each other
+                horizontal_dists.append(dist)
+                
+    if horizontal_dists:
+        horizontal_dists.sort()
+        # 10th percentile gives us the core "intra-cell" dot spacing, ignoring spaces between words
+        S = np.percentile(horizontal_dists, 10) 
+    else:
+        S = avg_dot_w * 1.5
+
+    final_text = ""
+    for line in lines:
+        line.sort(key=lambda d: d[4])
+        # Find the absolute top Y of this line to act as Row 0 baseline
+        line_top_cy = min(d[5] for d in line) 
+        
+        cluster = [line[0]]
+        for dot in line[1:]:
+            dist_from_last = dot[4] - cluster[-1][4]
+            
+            # If distance exceeds standard character gap, cut the cell!
+            if dist_from_last > S * 1.6:
+                # 1. Decode completed character
+                char, rect = translator.decode_cell(cluster, S, line_top_cy)
+                final_text += char
+                cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
+                
+                # 2. Check for Space (Word gap is usually > 3x dot spacing)
+                if dist_from_last > S * 3.0:
+                    final_text += " "
+                
+                # 3. Start new cell
+                cluster = [dot]
+            else:
+                cluster.append(dot)
+                
+        # Process remaining cluster
+        if cluster:
+            char, rect = translator.decode_cell(cluster, S, line_top_cy)
+            final_text += char
+            cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
+        
+        final_text += "\n"
+
+    raw_output = final_text.strip()
+    ai_output = refiner.fix_text(raw_output)
+    translated_output = refiner.translate_text(ai_output, target_lang=target_lang)
+
+    _, buffer = cv2.imencode('.jpg', debug_img)
+    img_base64 = base64.b64encode(buffer).decode('utf-8')
+
+    return {
+        "raw": raw_output,
+        "ai": ai_output,
+        "translated": translated_output,
+        "image": f"data:image/jpeg;base64,{img_base64}"
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+============================================================
+FILE PATH: backend\src\preprocess.py
+============================================================
+
+#braile/backend/src/preprocess.py
+
+import cv2
+import numpy as np
+
+def clean_image(img, is_photo_mode=True):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    if is_photo_mode:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+        tophat = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel)
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(tophat)
+        _, thresh = cv2.threshold(enhanced, 50, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    else:
+        # Optimized for your digital hello image
+        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+    
+    kernel_clean = np.ones((2, 2), np.uint8)
+    return cv2.dilate(thresh, kernel_clean, iterations=1)
+
+
+============================================================
+FILE PATH: backend\src\translator.py
+============================================================
+
+# braile/backend/src/translator.py
+
+class BrailleTranslator:
+    def __init__(self):
+        self.braille_map = {
+            '100000': 'a', '110000': 'b', '100100': 'c', '100110': 'd', '100010': 'e',
+            '110100': 'f', '110110': 'g', '110010': 'h', '010100': 'i', '010110': 'j',
+            '101000': 'k', '111000': 'l', '101100': 'm', '101110': 'n', '101010': 'o',
+            '111100': 'p', '111110': 'q', '111010': 'r', '011100': 's', '011110': 't',
+            '101001': 'u', '111001': 'v', '010111': 'w', '101101': 'x', '101111': 'y',
+            '101011': 'z', '000000': ' ', '001111': '#',
+            '010000': ',', '010011': '.', '011001': '?', 
+            '011010': '!', '001000': "'", '000001': '^'
+        }
+
+    def decode_cell(self, cluster, S, line_top_cy):
+        if not cluster: return "?", (0, 0, 0, 0)
+
+        # Draw box bounds
+        min_x = min(d[0] for d in cluster)
+        min_y = min(d[1] for d in cluster)
+        max_x = max(d[0] + d[2] for d in cluster)
+        max_y = max(d[1] + d[3] for d in cluster)
+
+        # Mathematical base for column 1
+        min_cx = min(d[4] for d in cluster)
+
+        code = ['0'] * 6
+        for d in cluster:
+            cx, cy = d[4], d[5]
+            
+            # 1. COLUMN DETECTION
+            # If horizontal distance from leftmost dot is > half spacing, it's col 2
+            col = 1 if (cx - min_cx) > (S * 0.5) else 0
+
+            # 2. ROW DETECTION 
+            # Calculated precisely from the absolute TOP of the whole line
+            dy = cy - line_top_cy
+            
+            if dy < S * 0.7:
+                row = 0
+            elif dy < S * 1.7:
+                row = 1
+            else:
+                row = 2
+
+            # Map array index (0-5)
+            idx = (3 + row) if col == 1 else row
+            if 0 <= idx < 6: 
+                code[idx] = '1'
+
+        char = self.braille_map.get("".join(code), '?')
+        return char, (int(min_x)-2, int(min_y)-2, int(max_x)+2, int(max_y)+2)
+
+
+============================================================
+FILE PATH: backend\src\__init__.py
+============================================================
+
+
+
+
+============================================================
+FILE PATH: frontend\eslint.config.js
+============================================================
+
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{js,jsx}'],
+    extends: [
+      js.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.browser,
+      parserOptions: {
+        ecmaVersion: 'latest',
+        ecmaFeatures: { jsx: true },
+        sourceType: 'module',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+    },
+  },
+])
+
+
+
+============================================================
+FILE PATH: frontend\index.html
+============================================================
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
+
+
+
+============================================================
+FILE PATH: frontend\package.json
+============================================================
+
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "axios": "^1.13.2",
+    "framer-motion": "^12.26.2",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.4.23",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "vite": "^7.2.4"
+  },
+  "description": "This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.",
+  "main": "eslint.config.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
+
+
+
+============================================================
+FILE PATH: frontend\README.md
+============================================================
+
+# React + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+
+
+
+============================================================
+FILE PATH: frontend\tailwind.config.js
+============================================================
+
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+
+
+============================================================
+FILE PATH: frontend\vite.config.js
+============================================================
+
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite' // Add this
+
+export default defineConfig({
+  plugins: [
+    react(),
+    tailwindcss(), // Add this
+  ],
+})
+
+
+============================================================
+FILE PATH: frontend\src\App.css
+============================================================
+
+/* braile/frontend/src/App.css */
+@import "tailwindcss";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Warm Premium Palette */
+  --bg-sunny: #fefce8;     /* Soft Yellow 50 */
+  --accent-amber: #f59e0b;  /* Amber 500 */
+  --accent-gold: #d97706;   /* Amber 600 */
+  --text-slate: #1e293b;    /* Slate 800 - Deep readability */
+  --glass-white: rgba(255, 255, 255, 0.75);
+}
+
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+  min-height: 100vh;
+  color: var(--text-slate);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  
+  /* Beautiful Sunny Radial Gradient */
+  background: 
+    radial-gradient(circle at 0% 0%, #fef08a 0, transparent 40%),  /* Yellow 200 */
+    radial-gradient(circle at 100% 100%, #fde68a 0, transparent 40%), /* Amber 200 */
+    var(--bg-sunny);
+  background-attachment: fixed;
+}
+
+/* Luxury Glassmorphism Utility */
+.glass-card {
+  background: var(--glass-white);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 
+    0 20px 25px -5px rgba(0, 0, 0, 0.03),
+    0 8px 10px -6px rgba(0, 0, 0, 0.02);
+  border-radius: 1.5rem;
+}
+
+/* Selection Color - Matches Yellow Theme */
+::selection {
+  background: #fef08a; /* Yellow 200 */
+  color: #92400e;      /* Amber 900 */
+}
+
+/* Premium Golden Glow for Final Results */
+.glow-text-yellow {
+  text-shadow: 0 0 15px rgba(245, 158, 11, 0.4);
+}
+
+/* Custom Styled Select Inputs */
+select {
+  appearance: none;
+  background-color: white;
+  border: 1px solid #fde047; /* Yellow 300 */
+  border-radius: 0.85rem;
+  padding: 0.75rem 2.5rem 0.75rem 1rem;
+  color: var(--text-slate);
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%23f59e0b%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+  background-size: 1.1em;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent-amber);
+  ring: 2px solid #fef08a;
+}
+
+/* Beautiful custom yellow scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(254, 249, 195, 0.5); /* Yellow 100 with transparency */
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-amber);
+  border-radius: 10px;
+  border: 2px solid #fefce8; /* Creates a gap effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-gold);
+}
+
+/* Subtle Loading Animation */
+@keyframes soft-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.01); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2s infinite ease-in-out;
+}
+
+
+============================================================
+FILE PATH: frontend\src\App.jsx
+============================================================
+
+/*braile/frontend/src/App.jsx*/
+
+import React, { useState } from 'react';
+import axios from 'axios';
+import {
+  Upload,
+  Cpu,
+  Sparkles,
+  Loader2,
+  Image as ImageIcon,
+  Globe,
+  Sun,
+  Moon,
+  Copy,
+  Check,
+  RefreshCcw
+} from 'lucide-react';
+
+// Language configuration to match your backend ISO mapping
+const SUPPORTED_LANGUAGES = [
+  { name: "Hindi", code: "hindi" },
+  { name: "Tamil", code: "tamil" },
+  { name: "Telugu", code: "telugu" },
+  { name: "Malayalam", code: "malayalam" },
+  { name: "Marathi", code: "marathi" },
+  { name: "Bengali", code: "bengali" },
+  { name: "Kannada", code: "kannada" },
+  { name: "Gujarati", code: "gujarati" },
+  { name: "French", code: "french" },
+  { name: "Spanish", code: "spanish" },
+  { name: "German", code: "german" },
+];
+
+function App() {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [mode, setMode] = useState("Digital/Black Dots");
+  const [targetLang, setTargetLang] = useState("malayalam");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [theme, setTheme] = useState("light");
+  const [copied, setCopied] = useState(false);
+
+  const isDark = theme === "dark";
+
+  const handleUpload = (e) => {
+    const selected = e.target.files[0];
+    if (!selected) return;
+    setFile(selected);
+    setPreview(URL.createObjectURL(selected));
+    setResult(null); 
+  };
+
+  const copyToClipboard = () => {
+    if (result?.translated) {
+      navigator.clipboard.writeText(result.translated);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const processScript = async () => {
+    if (!file) return;
+    setLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('mode', mode);
+    formData.append('target_lang', targetLang);
+
+    try {
+      const response = await axios.post('http://localhost:8000/translate', formData);
+      setResult(response.data);
+    } catch (error) {
+      console.error("Backend unreachable", error);
+      alert("⚠️ Connection Error: Ensure your Python backend is running at http://localhost:8000");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className={isDark
+      ? "min-h-screen bg-slate-950 text-amber-50 p-4 md:p-8 font-sans transition-colors duration-500"
+      : "min-h-screen bg-amber-50 text-slate-900 p-4 md:p-8 font-sans transition-colors duration-500"
+    }>
+      
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 -z-10 overflow-hidden">
+        {isDark ? (
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,_#451a03_0,_#020617_100%)]" />
+        ) : (
+          <>
+            <div className="absolute top-[-10%] left-[-10%] h-[600px] w-[600px] rounded-full bg-yellow-200/40 blur-[120px]" />
+            <div className="absolute bottom-[-10%] right-[-10%] h-[600px] w-[600px] rounded-full bg-amber-200/40 blur-[120px]" />
+          </>
+        )}
+      </div>
+
+      <div className="max-w-6xl mx-auto relative">
+        {/* Top Header */}
+        <header className="flex justify-between items-center mb-12">
+          <div className="group cursor-default">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500 text-white p-2.5 rounded-2xl shadow-xl shadow-amber-500/20 group-hover:rotate-12 transition-transform">
+                <Sparkles size={28} />
+              </div>
+              <h1 className="text-4xl font-black tracking-tighter">
+                Braille<span className="text-amber-600">Studio</span>
+              </h1>
+            </div>
+            <p className={`text-xs mt-1.5 font-bold uppercase tracking-[0.2em] opacity-60 ml-14`}>
+              AI-Powered Vision System
+            </p>
+          </div>
+          
+          <button 
+            onClick={() => setTheme(isDark ? "light" : "dark")} 
+            className={`p-3 rounded-2xl border transition-all active:scale-90 ${
+              isDark ? "bg-slate-900 border-slate-700 text-yellow-400" : "bg-white border-amber-200 text-amber-600 shadow-sm"
+            }`}
+          >
+            {isDark ? <Sun size={22} /> : <Moon size={22} />}
+          </button>
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          
+          {/* LEFT COLUMN - CONTROLS */}
+          <div className="lg:col-span-5 space-y-6">
+            <section className={`p-6 rounded-[2.5rem] border transition-all ${
+              isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-white shadow-xl shadow-amber-900/5"
+            }`}>
+              <div className="flex justify-between items-center mb-4 px-2">
+                <span className="text-[11px] uppercase font-black tracking-widest text-amber-600">01. Source Script</span>
+                {preview && (
+                   <button onClick={() => {setFile(null); setPreview(null); setResult(null);}} className="text-xs font-bold text-red-500 flex items-center gap-1 hover:opacity-80">
+                     <RefreshCcw size={12} /> Clear
+                   </button>
+                )}
+              </div>
+              
+              <label className={`group border-2 border-dashed rounded-[2rem] h-72 flex flex-col items-center justify-center cursor-pointer transition-all overflow-hidden relative ${
+                isDark ? "border-slate-700 bg-slate-900/50 hover:border-amber-500/50" : "border-amber-200 bg-amber-50/50 hover:bg-amber-100/50"
+              }`}>
+                {preview ? (
+                  <img src={preview} alt="preview" className="h-full w-full object-contain p-2" />
+                ) : (
+                  <div className="text-center">
+                    <div className={`p-5 rounded-full inline-block mb-4 transition-transform group-hover:-translate-y-2 ${isDark ? 'bg-slate-800 text-amber-500' : 'bg-amber-100 text-amber-600'}`}>
+                      <Upload size={32} />
+                    </div>
+                    <p className="text-sm font-bold opacity-70">Click or Drag Image</p>
+                    <p className="text-[10px] opacity-40 mt-1 uppercase tracking-tighter">JPG, PNG up to 10MB</p>
+                  </div>
+                )}
+                <input type="file" className="hidden" onChange={handleUpload} accept="image/*" />
+              </label>
+            </section>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className={`p-5 rounded-3xl border ${isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-white"}`}>
+                <label className="text-[10px] uppercase font-black tracking-widest text-amber-600 mb-3 flex items-center gap-2">
+                  <Cpu size={14}/> Algorithm
+                </label>
+                <select 
+                  value={mode} 
+                  onChange={(e)=>setMode(e.target.value)}
+                  className={`w-full bg-transparent text-sm font-bold outline-none cursor-pointer`}
+                >
+                  <option value="Digital/Black Dots">Modern Digital</option>
+                  <option value="Real Photo (Embossed)">Optical Photo</option>
+                </select>
+              </div>
+
+              <div className={`p-5 rounded-3xl border ${isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-white"}`}>
+                <label className="text-[10px] uppercase font-black tracking-widest text-amber-600 mb-3 flex items-center gap-2">
+                  <Globe size={14}/> Translation
+                </label>
+                <select
+                  value={targetLang}
+                  onChange={(e) => setTargetLang(e.target.value)}
+                  className={`w-full bg-transparent text-sm font-bold outline-none cursor-pointer`}
+                >
+                  {SUPPORTED_LANGUAGES.map(lang => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button 
+              onClick={processScript} 
+              disabled={loading || !file} 
+              className="group w-full py-6 bg-amber-500 hover:bg-amber-600 text-white rounded-[2rem] font-black text-lg shadow-2xl shadow-amber-500/40 transition-all transform active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-3 overflow-hidden relative"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  <span>Processing Neurons...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={22} className="group-hover:animate-pulse" />
+                  <span>Execute Translation</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* RIGHT COLUMN - RESULTS */}
+          <div className="lg:col-span-7 space-y-6">
+            
+            {/* Visualization Card */}
+            <div className={`p-5 rounded-[2.5rem] border overflow-hidden relative group ${
+              isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-white shadow-xl shadow-amber-900/5"
+            }`}>
+               <span className="text-[11px] uppercase font-black tracking-widest block mb-4 text-amber-600">AI Computer Vision Map</span>
+               <div className={`rounded-[1.5rem] overflow-hidden min-h-[320px] flex items-center justify-center border transition-all ${
+                 isDark ? "bg-slate-950 border-white/5" : "bg-white border-amber-100 shadow-inner"
+               }`}>
+                  {result?.image ? (
+                    <img src={result.image} alt="AI output" className="w-full h-auto animate-in fade-in zoom-in duration-500" />
+                  ) : (
+                    <div className="text-center p-12 opacity-40">
+                      <div className="relative inline-block">
+                        <ImageIcon className="mx-auto mb-4" size={64} strokeWidth={1} />
+                        <Loader2 className={`absolute -top-1 -right-1 text-amber-500 ${loading ? 'animate-spin' : 'hidden'}`} />
+                      </div>
+                      <p className="text-sm font-bold">Neural Map Visualization</p>
+                      <p className="text-[10px] uppercase mt-1 tracking-tighter">Waiting for script processing...</p>
+                    </div>
+                  )}
+               </div>
+            </div> {/* <-- Error was here: changed </section> to </div> */}
+
+            {/* Results Grid */}
+            <div className="space-y-4">
+              <div className={`p-6 rounded-3xl border-l-8 border-amber-500 transition-all ${
+                isDark ? "bg-white/5 border-white/10" : "bg-white border-white shadow-lg"
+              }`}>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-[10px] uppercase font-black text-amber-600 tracking-tighter">02. Corrected English (LLM)</span>
+                </div>
+                <p className="text-xl font-bold tracking-tight">
+                  {result?.ai || <span className="opacity-20">---</span>}
+                </p>
+              </div>
+
+              <div className={`p-8 rounded-[3rem] border-2 transition-all relative overflow-hidden group ${
+                isDark 
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-100" 
+                : "bg-amber-500 text-white border-amber-400 shadow-2xl shadow-amber-500/40"
+              }`}>
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <span className={`text-[11px] uppercase font-black tracking-[0.3em] ${isDark ? 'text-amber-500' : 'text-amber-200'}`}>
+                      Final Global Output
+                    </span>
+                    <h3 className="text-xs font-bold opacity-80 mt-1 uppercase">Target: {targetLang}</h3>
+                  </div>
+                  
+                  {result?.translated && (
+                    <button 
+                      onClick={copyToClipboard}
+                      className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-white/20 hover:bg-white/30 text-white'}`}
+                    >
+                      {copied ? <Check size={20} /> : <Copy size={20} />}
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-4xl md:text-5xl font-black leading-tight tracking-tighter break-words">
+                  {result?.translated || (
+                    <div className="flex gap-2">
+                      <div className="w-3 h-3 rounded-full bg-current opacity-20 animate-bounce" />
+                      <div className="w-3 h-3 rounded-full bg-current opacity-20 animate-bounce [animation-delay:0.2s]" />
+                      <div className="w-3 h-3 rounded-full bg-current opacity-20 animate-bounce [animation-delay:0.4s]" />
+                    </div>
+                  )}
+                </div>
+                <Globe className="absolute -bottom-6 -right-6 w-32 h-32 opacity-10 rotate-12" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+
+
+============================================================
+FILE PATH: frontend\src\index.css
+============================================================
+
+/*braile/frontend/src/App.css*/
+
+
+@import "tailwindcss";
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Theme Variables */
+:root {
+  --bg-dark: #050811;
+  --card-bg: rgba(22, 27, 43, 0.7);
+  --accent-indigo: #6366f1;
+  --accent-pink: #ec4899;
+}
+
+body {
+  background-color: var(--bg-dark);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(236, 72, 153, 0.1) 0px, transparent 50%);
+  min-height: 100vh;
+  color: white;
+}
+
+/* Glassmorphism Utility */
+.glass {
+  background: var(--card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Glowing text for AI outputs */
+.glow-text {
+  text-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+/* Pulse animation for the detection box */
+@keyframes pulse-border {
+  0% { border-color: rgba(99, 102, 241, 0.3); }
+  50% { border-color: rgba(99, 102, 241, 0.8); }
+  100% { border-color: rgba(99, 102, 241, 0.3); }
+}
+
+.animate-pulse-border {
+  animation: pulse-border 2s infinite;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0b0f1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+
+============================================================
+FILE PATH: frontend\src\main.jsx
+============================================================
+
+// braile/frontend/src/main.jsx
+
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+
+

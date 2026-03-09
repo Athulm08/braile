@@ -1,4 +1,4 @@
-#braile/backend/src/preprocess.py
+# braile/backend/src/preprocess.py
 
 import cv2
 import numpy as np
@@ -12,8 +12,9 @@ def clean_image(img, is_photo_mode=True):
         enhanced = clahe.apply(tophat)
         _, thresh = cv2.threshold(enhanced, 50, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     else:
-        # Optimized for your digital hello image
-        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+        # Optimized for Digital images (like black dots on yellow background)
+        # Using THRESH_OTSU allows it to adapt to ANY background color automatically
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
     kernel_clean = np.ones((2, 2), np.uint8)
     return cv2.dilate(thresh, kernel_clean, iterations=1)

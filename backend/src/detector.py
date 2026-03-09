@@ -1,8 +1,7 @@
-#braile/backend/src/detector.py
+# braile/backend/src/detector.py
 
 import cv2
 import numpy as np
-
 
 def detect_dots(thresh_img):
     contours, _ = cv2.findContours(
@@ -14,26 +13,32 @@ def detect_dots(thresh_img):
         median_area = np.median(areas) if areas else 0
         for c in contours:
             area = cv2.contourArea(c)
-            # Same robust noise filter as your “accurate” code
+            # Filter noise
             if area > 3 and (0.15 * median_area < area < 5.0 * median_area):
-                dots.append(cv2.boundingRect(c))
+                x, y, w, h = cv2.boundingRect(c)
+                # Calculate True Centers for mathematical grid alignment
+                cx = x + (w / 2.0)
+                cy = y + (h / 2.0)
+                # Return tuple with centers included
+                dots.append((x, y, w, h, cx, cy)) 
     return dots
-
 
 def group_dots_into_lines(dots):
     if not dots:
         return []
 
-    # Sort by y (top to bottom)
-    dots.sort(key=lambda k: k[1])
+    # Sort strictly by center Y (cy)
+    dots.sort(key=lambda k: k[5])
 
     lines = []
     curr_line = [dots[0]]
-    avg_h = sum(d[3] for d in dots) / len(dots)
+    
+    # Use median height to avoid outlier distortion
+    avg_h = np.median([d[3] for d in dots])
 
     for i in range(1, len(dots)):
-        # Relaxed vertical check (2.0 * height) same as UltimateScanner
-        if abs(dots[i][1] - curr_line[-1][1]) < (avg_h * 2.0):
+        # If the vertical center difference is small, it's the same line
+        if abs(dots[i][5] - curr_line[-1][5]) < (avg_h * 1.5):
             curr_line.append(dots[i])
         else:
             lines.append(curr_line)

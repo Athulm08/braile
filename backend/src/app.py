@@ -1,4 +1,3 @@
-
 # braile/backend/src/app.py
 
 import os
@@ -42,28 +41,49 @@ def process_workflow(image, mode):
     
     lines = group_dots_into_lines(dots)
     avg_dot_w = sum(d[2] for d in dots) / len(dots)
+    avg_dot_h = sum(d[3] for d in dots) / len(dots)
     
     final_text = ""
     for line in lines:
         line.sort(key=lambda k: k[0])
-        gap_limit = avg_dot_w * 3.5 # Optimized gap threshold
+        
+        # Calculate line vertical metrics
+        line_ys = [d[1] for d in line]
+        line_min_y = min(line_ys)
+        line_max_y = max(line_ys)
+        line_h = line_max_y - line_min_y
+        
+        if line_h > 2.2 * avg_dot_h:
+            line_spacing = line_h / 2.0
+        elif line_h > 1.2 * avg_dot_h:
+            line_spacing = line_h
+        else:
+            line_spacing = 1.6 * avg_dot_h
+
+        gap_limit = avg_dot_w * 2.2 
+        space_limit = avg_dot_w * 5.0
         
         cluster = []
         last_x = line[0][0]
+        
         for dot in line:
             # If gap is too large, process the current character and reset
             if (dot[0] - last_x) > gap_limit:
-                char, rect = translator.decode_cell(cluster, avg_dot_w)
+                char, rect = translator.decode_cell(cluster, avg_dot_w, line_min_y, line_spacing)
                 final_text += char
                 cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
                 cluster = []
+                
+                # Check for space between words
+                if (dot[0] - last_x) > space_limit:
+                    final_text += " "
             
             cluster.append(dot)
             last_x = dot[0]
         
         # Process the final character of the line
         if cluster:
-            char, rect = translator.decode_cell(cluster, avg_dot_w)
+            char, rect = translator.decode_cell(cluster, avg_dot_w, line_min_y, line_spacing)
             final_text += char
             cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
         final_text += "\n"
@@ -93,4 +113,5 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     btn.click(process_workflow, inputs=[input_img, mode], outputs=[raw_out, ai_out, debug_out])
 
-demo.launch(share=True, debug=True)
+if __name__ == "__main__":
+    demo.launch(share=True, debug=True)
