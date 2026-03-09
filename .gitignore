@@ -14,6 +14,8 @@ temp.jpg
 temp_process.jpg
 data/input/
 data/output/
+backend/data/input
+backend/data/output
 
 # --- AI Models ---
 # Transformers models are huge; don't upload them
