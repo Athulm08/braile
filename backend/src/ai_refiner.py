@@ -1,7 +1,8 @@
 from transformers import pipeline
 import torch
 import warnings
-from googletrans import Translator  # <--- Changed to googletrans
+import asyncio
+from googletrans import Translator
 
 # Suppress unnecessary warnings
 warnings.filterwarnings("ignore")
@@ -12,18 +13,25 @@ class AIRefiner:
         self.device = 0 if torch.cuda.is_available() else -1
         print(f"[*] Initializing AI Refiner on {'GPU' if self.device == 0 else 'CPU'}...")
         
+        # 1. Initialize the AI Model (Flan-T5)
         try:
-            # Load Flan-T5 for English text correction
             self.model = pipeline(
                 "text2text-generation", 
                 model="google/flan-t5-base", 
                 device=self.device
             )
-            self.translator_engine = Translator() # Initialize googletrans
-            print("[+] AI Model and Translator loaded successfully.")
+            print("[+] AI Model loaded successfully.")
         except Exception as e:
-            print(f"[-] Initialization failed: {e}")
+            print(f"[-] AI Model loading failed: {e}")
             self.model = None
+
+        # 2. Initialize the Translator independently
+        try:
+            self.translator_engine = Translator()
+            print("[+] Googletrans engine initialized.")
+        except Exception as e:
+            print(f"[-] Translator initialization failed: {e}")
+            self.translator_engine = None
 
     def fix_text(self, text):
         """Clean English Braille-to-Text artifacts using Flan-T5."""
@@ -37,8 +45,6 @@ class AIRefiner:
         try:
             result = self.model(prompt, max_length=128, num_beams=4, early_stopping=True)
             corrected = result[0]['generated_text']
-            
-            # Clean up T5 specific prefixes
             clean_output = corrected.replace("The text is:", "").replace("Corrected text:", "").strip()
             return clean_output if clean_output else text
         except Exception as e:
@@ -46,37 +52,31 @@ class AIRefiner:
             return text
 
     def translate_text(self, text, target_lang='hindi'):
-        """
-        Translates Refined English to target language using googletrans.
-        """
+        """Translates Refined English to target language using googletrans."""
+        if not text or not self.translator_engine:
+            return text
+
         lang_input = target_lang.lower().strip()
-        
-        if not text or lang_input == 'english':
+        if lang_input == 'english':
             return text
 
         # Mapping for googletrans
         lang_map = {
-            "hindi": "hi",
-            "tamil": "ta",
-            "telugu": "te",
-            "malayalam": "ml",
-            "marathi": "mr",
-            "bengali": "bn",
-            "kannada": "kn",
-            "gujarati": "gu",
-            "punjabi": "pa",
-            "french": "fr",
-            "spanish": "es",
-            "german": "de",
-            "arabic": "ar"
+            "hindi": "hi", "tamil": "ta", "telugu": "te", "malayalam": "ml",
+            "marathi": "mr", "bengali": "bn", "kannada": "kn", "gujarati": "gu",
+            "punjabi": "pa", "french": "fr", "spanish": "es", "german": "de", "arabic": "ar"
         }
 
         lang_code = lang_map.get(lang_input, lang_input)
 
         try:
-            # Usage: translator.translate(text, dest='lang_code')
-            # googletrans handles the 'en' source detection automatically
+            # googletrans version 4.0.0-rc1 is the most stable
             translated = self.translator_engine.translate(text, dest=lang_code)
+            
+            # Handle potential async returns in some environments
+            if asyncio.iscoroutine(translated):
+                translated = asyncio.run(translated)
+
             return translated.text
         except Exception as e:
             print(f"Googletrans error for {target_lang}: {e}")

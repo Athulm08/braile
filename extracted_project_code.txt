@@ -272,8 +272,17 @@ class AIRefiner:
             # Usage: translator.translate(text, dest='lang_code')
             # googletrans handles the 'en' source detection automatically
             translated = self.translator_engine.translate(text, dest=lang_code)
+
+            # recent googletrans versions return a coroutine
+            # so we make sure to await it if needed
+            import asyncio
+            if asyncio.iscoroutine(translated):
+                translated = asyncio.run(translated)
+
             return translated.text
         except Exception as e:
+            # sometimes the library can fail due to network or API
+            # so log and return original text as a safe fallback
             print(f"Googletrans error for {target_lang}: {e}")
             return text
 
@@ -516,56 +525,63 @@ async def translate_endpoint(
 
     lines = group_dots_into_lines(dots)
     
-    # --- INTELLIGENT SPACING CALCULATION ---
-    # Find base dot width
+    # --- STRICT GRID ALIGNMENT ---
     avg_dot_w = np.median([d[2] for d in dots])
+    dx_list, dy_list = [], []
     
-    # Calculate 'S' (Global Spatial Distance between dots)
-    # We find all horizontal distances between nearest neighbors
-    horizontal_dists = []
     for line in lines:
-        line.sort(key=lambda d: d[4]) # Sort by center X
-        for i in range(len(line)-1):
-            dist = line[i+1][4] - line[i][4]
-            if dist > avg_dot_w * 0.5: # Ignore dots directly below each other
-                horizontal_dists.append(dist)
+        xs = sorted([d[4] for d in line])
+        for i in range(1, len(xs)):
+            dx = xs[i] - xs[i-1]
+            if dx > avg_dot_w * 0.3: 
+                dx_list.append(dx)
                 
-    if horizontal_dists:
-        horizontal_dists.sort()
-        # 10th percentile gives us the core "intra-cell" dot spacing, ignoring spaces between words
-        S = np.percentile(horizontal_dists, 10) 
-    else:
-        S = avg_dot_w * 1.5
+        ys = sorted([d[5] for d in line])
+        for i in range(1, len(ys)):
+            dy = ys[i] - ys[i-1]
+            if dy > avg_dot_w * 0.3: 
+                dy_list.append(dy)
+
+    raw_Sx = np.percentile(dx_list, 25) if dx_list else avg_dot_w * 2.5
+    raw_Sy = np.percentile(dy_list, 25) if dy_list else avg_dot_w * 2.5
+    
+    S_x = max(min(raw_Sx, avg_dot_w * 3.5), avg_dot_w * 1.2)
+    S_y = max(min(raw_Sy, avg_dot_w * 3.5), avg_dot_w * 1.2)
 
     final_text = ""
     for line in lines:
         line.sort(key=lambda d: d[4])
-        # Find the absolute top Y of this line to act as Row 0 baseline
         line_top_cy = min(d[5] for d in line) 
         
         cluster = [line[0]]
+        cell_min_cx = line[0][4]
+        
         for dot in line[1:]:
-            dist_from_last = dot[4] - cluster[-1][4]
+            cx = dot[4]
             
-            # If distance exceeds standard character gap, cut the cell!
-            if dist_from_last > S * 1.6:
-                # 1. Decode completed character
-                char, rect = translator.decode_cell(cluster, S, line_top_cy)
+            if (cx - cell_min_cx) > S_x * 1.4:
+                
+                # Decode completed character
+                char, rect = translator.decode_cell(cluster, S_x, S_y, line_top_cy)
                 final_text += char
                 cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
                 
-                # 2. Check for Space (Word gap is usually > 3x dot spacing)
-                if dist_from_last > S * 3.0:
+                # --- INTELLIGENT SPACE DETECTION ---
+                # We measure from the START of the old cell (cell_min_cx) to the START of the new cell (cx)
+                # Adjacent characters start ~2.5x to 3.0x S_x apart.
+                # A true space adds an empty cell, jumping the distance to > 4.5x S_x.
+                if (cx - cell_min_cx) > S_x * 3.8:
                     final_text += " "
-                
-                # 3. Start new cell
+                    
+                # Start new cell
                 cluster = [dot]
+                cell_min_cx = cx
             else:
                 cluster.append(dot)
                 
-        # Process remaining cluster
+        # Process final character
         if cluster:
-            char, rect = translator.decode_cell(cluster, S, line_top_cy)
+            char, rect = translator.decode_cell(cluster, S_x, S_y, line_top_cy)
             final_text += char
             cv2.rectangle(debug_img, (rect[0], rect[1]), (rect[2], rect[3]), (0, 255, 0), 2)
         
@@ -593,7 +609,7 @@ if __name__ == "__main__":
 FILE PATH: backend\src\preprocess.py
 ============================================================
 
-#braile/backend/src/preprocess.py
+# braile/backend/src/preprocess.py
 
 import cv2
 import numpy as np
@@ -607,8 +623,9 @@ def clean_image(img, is_photo_mode=True):
         enhanced = clahe.apply(tophat)
         _, thresh = cv2.threshold(enhanced, 50, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     else:
-        # Optimized for your digital hello image
-        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV)
+        # Optimized for Digital images (like black dots on yellow background)
+        # Using THRESH_OTSU allows it to adapt to ANY background color automatically
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
     
     kernel_clean = np.ones((2, 2), np.uint8)
     return cv2.dilate(thresh, kernel_clean, iterations=1)
@@ -633,44 +650,43 @@ class BrailleTranslator:
             '011010': '!', '001000': "'", '000001': '^'
         }
 
-    def decode_cell(self, cluster, S, line_top_cy):
+    def decode_cell(self, cluster, S_x, S_y, line_top_cy):
         if not cluster: return "?", (0, 0, 0, 0)
 
-        # Draw box bounds
-        min_x = min(d[0] for d in cluster)
-        min_y = min(d[1] for d in cluster)
-        max_x = max(d[0] + d[2] for d in cluster)
-        max_y = max(d[1] + d[3] for d in cluster)
-
-        # Mathematical base for column 1
+        # Baseline X coordinate for this specific character
         min_cx = min(d[4] for d in cluster)
 
         code = ['0'] * 6
         for d in cluster:
             cx, cy = d[4], d[5]
             
-            # 1. COLUMN DETECTION
-            # If horizontal distance from leftmost dot is > half spacing, it's col 2
-            col = 1 if (cx - min_cx) > (S * 0.5) else 0
+            # 1. COLUMN DETECTION (Using exact X Spacing)
+            col = 1 if (cx - min_cx) > (S_x * 0.5) else 0
 
-            # 2. ROW DETECTION 
-            # Calculated precisely from the absolute TOP of the whole line
+            # 2. ROW DETECTION (Using exact Y Spacing)
             dy = cy - line_top_cy
             
-            if dy < S * 0.7:
+            if dy < S_y * 0.5:
                 row = 0
-            elif dy < S * 1.7:
+            elif dy < S_y * 1.5:
                 row = 1
             else:
                 row = 2
 
-            # Map array index (0-5)
             idx = (3 + row) if col == 1 else row
             if 0 <= idx < 6: 
                 code[idx] = '1'
 
         char = self.braille_map.get("".join(code), '?')
-        return char, (int(min_x)-2, int(min_y)-2, int(max_x)+2, int(max_y)+2)
+        
+        # UI Output: Draw a mathematically perfect 2x3 uniform grid box 
+        # around the cell, rather than shrink-wrapping the dots.
+        box_x1 = int(min_cx - S_x * 0.4)
+        box_y1 = int(line_top_cy - S_y * 0.5)
+        box_x2 = int(min_cx + S_x * 1.4)
+        box_y2 = int(line_top_cy + S_y * 2.5)
+        
+        return char, (box_x1, box_y1, box_x2, box_y2)
 
 
 ============================================================
