@@ -6,9 +6,11 @@ import uvicorn
 import cv2
 import numpy as np
 import base64
+import io
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from gtts import gTTS
 
 from preprocess import clean_image
 from detector import detect_dots, group_dots_into_lines
@@ -40,12 +42,29 @@ class BrailleTextRequest(BaseModel):
     braille_text: str
     target_lang: str = "english"
 
+class AudioRequest(BaseModel):
+    text: str
+    lang: str
+
+# --- NEW: Cloud Native TTS Generator ---
+@app.post("/generate-audio")
+async def generate_audio_endpoint(req: AudioRequest):
+    try:
+        # Fetches native voice from Google Cloud
+        tts = gTTS(text=req.text, lang=req.lang)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        audio_base64 = base64.b64encode(fp.read()).decode('utf-8')
+        return {"audio": f"data:audio/mp3;base64,{audio_base64}"}
+    except Exception as e:
+        return {"error": str(e)}
+
 @app.post("/generate-braille")
 async def generate_braille_endpoint(req: TextRequest):
     braille_output = translator.text_to_braille(req.text)
     return {"braille": braille_output}
 
-# --- NEW: Decode Unicode Braille to Text ---
 @app.post("/translate-braille-text")
 async def translate_braille_text_endpoint(req: BrailleTextRequest):
     raw_output = translator.braille_to_text(req.braille_text)

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import {
   Upload, Cpu, Sparkles, Loader2, Image as ImageIcon,
-  Globe, Sun, Moon, Copy, Check, RefreshCcw, ScanLine, Keyboard, Download, Type
+  Globe, Sun, Moon, Copy, Check, RefreshCcw, ScanLine, Keyboard, Download, Type, Volume2
 } from 'lucide-react';
 
 const SUPPORTED_LANGUAGES =[
@@ -19,31 +19,48 @@ const SUPPORTED_LANGUAGES =[
   { name: "German", code: "german" },
 ];
 
+// Map languages to Google TTS short codes
+const GTTS_LANG_MAP = {
+  "hindi": "hi",
+  "tamil": "ta",
+  "telugu": "te",
+  "malayalam": "ml",
+  "marathi": "mr",
+  "bengali": "bn",
+  "kannada": "kn",
+  "gujarati": "gu",
+  "french": "fr",
+  "spanish": "es",
+  "german": "de",
+  "english": "en"
+};
+
 function App() {
-  const[activeTab, setActiveTab] = useState("scan"); 
+  const [activeTab, setActiveTab] = useState("scan"); 
   const [targetLang, setTargetLang] = useState("malayalam");
   
   // Tab 1: Image Scanner
   const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null);
-  const[mode, setMode] = useState("Digital/Black Dots");
+  const[preview, setPreview] = useState(null);
+  const [mode, setMode] = useState("Digital/Black Dots");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
   // Tab 2: Text to Braille Generator
-  const[inputText, setInputText] = useState("");
-  const [generatedBraille, setGeneratedBraille] = useState("");
-  const[generating, setGenerating] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const[generatedBraille, setGeneratedBraille] = useState("");
+  const [generating, setGenerating] = useState(false);
   const [genCopied, setGenCopied] = useState(false);
 
   // Tab 3: Braille Unicode to Text Decoder
-  const[decodeInput, setDecodeInput] = useState("");
-  const [decodeResult, setDecodeResult] = useState(null);
+  const [decodeInput, setDecodeInput] = useState("");
+  const[decodeResult, setDecodeResult] = useState(null);
   const [decoding, setDecoding] = useState(false);
-  const[decodeCopied, setDecodeCopied] = useState(false);
+  const [decodeCopied, setDecodeCopied] = useState(false);
 
   const [theme, setTheme] = useState("light");
+  const [isSpeaking, setIsSpeaking] = useState(false); // Global Audio State
   const isDark = theme === "dark";
 
   const handleUpload = (e) => {
@@ -59,6 +76,34 @@ function App() {
       navigator.clipboard.writeText(text);
       setCopiedState(true);
       setTimeout(() => setCopiedState(false), 2000);
+    }
+  };
+
+  // --- NATIVE CLOUD AUDIO FETCH ---
+  const speakText = async (text, lang) => {
+    if (!text || isSpeaking) return;
+    setIsSpeaking(true);
+    
+    const langCode = GTTS_LANG_MAP[lang.toLowerCase()] || "en";
+    
+    try {
+      const response = await axios.post('http://localhost:8000/generate-audio', {
+        text: text,
+        lang: langCode
+      });
+      
+      if (response.data.audio) {
+        const audio = new Audio(response.data.audio);
+        audio.onended = () => setIsSpeaking(false);
+        audio.play();
+      } else {
+        alert("Audio generation failed.");
+        setIsSpeaking(false);
+      }
+    } catch (err) {
+      console.error("Audio error:", err);
+      alert("⚠️ Connection Error: Ensure Python backend is running.");
+      setIsSpeaking(false);
     }
   };
 
@@ -153,7 +198,6 @@ function App() {
       </div>
 
       <div className="max-w-6xl mx-auto relative">
-        {/* Header */}
         <header className="flex justify-between items-center mb-10">
           <div className="group cursor-default">
             <div className="flex items-center gap-3">
@@ -169,7 +213,6 @@ function App() {
           </button>
         </header>
 
-        {/* 3-Way Tab Navigation */}
         <div className="flex justify-center mb-10">
           <div className={`p-1.5 rounded-2xl border inline-flex ${isDark ? 'bg-white/5 border-white/10' : 'bg-white/80 border-amber-200 shadow-sm'}`}>
             <button onClick={() => setActiveTab("scan")} className={`px-5 py-2.5 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${activeTab === "scan" ? 'bg-amber-500 text-white shadow-md' : 'opacity-60 hover:opacity-100'}`}>
@@ -187,7 +230,6 @@ function App() {
         {/* TAB 1: IMAGE SCANNER */}
         {activeTab === "scan" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* ... (Existing Tab 1 Code) ... */}
             <div className="lg:col-span-5 space-y-6">
               <section className={`p-6 rounded-[2.5rem] border transition-all ${isDark ? "bg-white/5 border-white/10" : "bg-white/80 border-white shadow-xl shadow-amber-900/5"}`}>
                 <div className="flex justify-between items-center mb-4 px-2">
@@ -232,16 +274,26 @@ function App() {
                 <div className={`p-8 rounded-[3rem] border-2 relative group ${isDark ? "bg-amber-500/10 border-amber-500/30 text-amber-100" : "bg-amber-500 text-white border-amber-400 shadow-2xl shadow-amber-500/40"}`}>
                   <div className="flex justify-between items-start mb-6">
                     <div><span className={`text-[11px] uppercase font-black tracking-[0.3em] ${isDark ? 'text-amber-500' : 'text-amber-200'}`}>Final Global Output</span><h3 className="text-xs font-bold opacity-80 mt-1 uppercase">Target: {targetLang}</h3></div>
-                    {result?.translated && <button onClick={() => copyToClipboard(result.translated, setCopied)} className="p-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white"><Copy size={20} /></button>}
+                    
+                    {result?.translated && (
+                      <div className="flex gap-2">
+                        <button onClick={() => speakText(result.translated, targetLang)} disabled={isSpeaking} className="p-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white transition-all active:scale-90" title="Listen to Translation">
+                          {isSpeaking ? <Loader2 size={20} className="animate-spin" /> : <Volume2 size={20} />}
+                        </button>
+                        <button onClick={() => copyToClipboard(result.translated, setCopied)} className="p-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white transition-all active:scale-90" title="Copy Text">
+                          {copied ? <Check size={20} /> : <Copy size={20} />}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-4xl md:text-5xl font-black leading-tight tracking-tighter break-words">{result?.translated || "..."}</div>
+                  <div className="text-4xl md:text-5xl font-black leading-tight tracking-tighter break-words" style={{ lineHeight: '1.4' }}>{result?.translated || "..."}</div>
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* NEW TAB 3: BRAILLE DECODER */}
+        {/* TAB 3: BRAILLE DECODER */}
         {activeTab === "decode" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="lg:col-span-5 space-y-6">
@@ -286,13 +338,19 @@ function App() {
                     <span className={`text-[11px] uppercase font-black tracking-[0.3em] ${isDark ? 'text-amber-500' : 'text-amber-200'}`}>Final Global Output</span>
                     <h3 className="text-xs font-bold opacity-80 mt-1 uppercase">Target: {targetLang}</h3>
                   </div>
+                  
                   {decodeResult?.translated && (
-                    <button onClick={() => copyToClipboard(decodeResult.translated, setDecodeCopied)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-white/20 hover:bg-white/30 text-white'}`}>
-                      {decodeCopied ? <Check size={20} /> : <Copy size={20} />}
-                    </button>
+                    <div className="flex gap-2">
+                        <button onClick={() => speakText(decodeResult.translated, targetLang)} disabled={isSpeaking} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-white/20 hover:bg-white/30 text-white'}`} title="Listen to Translation">
+                          {isSpeaking ? <Loader2 size={20} className="animate-spin" /> : <Volume2 size={20} />}
+                        </button>
+                        <button onClick={() => copyToClipboard(decodeResult.translated, setDecodeCopied)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-amber-500/20 text-amber-400' : 'bg-white/20 hover:bg-white/30 text-white'}`} title="Copy Text">
+                          {decodeCopied ? <Check size={20} /> : <Copy size={20} />}
+                        </button>
+                    </div>
                   )}
                 </div>
-                <div className="text-4xl md:text-5xl font-black leading-tight tracking-tighter break-words">
+                <div className="text-4xl md:text-5xl font-black leading-tight tracking-tighter break-words" style={{ lineHeight: '1.4' }}>
                   {decodeResult?.translated || <div className="flex gap-2"><div className="w-3 h-3 rounded-full bg-current opacity-20 animate-bounce" /></div>}
                 </div>
                 <Globe className="absolute -bottom-6 -right-6 w-32 h-32 opacity-10 rotate-12" />
@@ -314,8 +372,8 @@ function App() {
                 <span className={`text-[11px] uppercase font-black tracking-[0.3em] ${isDark ? 'text-amber-500' : 'text-amber-600'}`}>Braille Output</span>
                 {generatedBraille && (
                   <div className="flex gap-2">
-                    <button onClick={downloadBrailleAsImage} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-slate-800 text-amber-500' : 'bg-amber-50 text-amber-600'}`}><Download size={20} /></button>
-                    <button onClick={() => copyToClipboard(generatedBraille, setGenCopied)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-slate-800 text-amber-500' : 'bg-amber-50 text-amber-600'}`}>{genCopied ? <Check size={20} /> : <Copy size={20} />}</button>
+                    <button onClick={downloadBrailleAsImage} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-slate-800 text-amber-500' : 'bg-amber-50 text-amber-600'}`} title="Download as Image"><Download size={20} /></button>
+                    <button onClick={() => copyToClipboard(generatedBraille, setGenCopied)} className={`p-3 rounded-2xl transition-all active:scale-90 ${isDark ? 'bg-slate-800 text-amber-500' : 'bg-amber-50 text-amber-600'}`} title="Copy Braille Text">{genCopied ? <Check size={20} /> : <Copy size={20} />}</button>
                   </div>
                 )}
               </div>
